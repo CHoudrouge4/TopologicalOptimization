@@ -1,6 +1,5 @@
 
 /*
- *
  *  OGF/Graphite: Geometry and Graphics Programming Library + Utilities
  *  Copyright (C) 2000-2015 INRIA - Project ALICE
  *
@@ -91,10 +90,8 @@ namespace OGF {
 	void MeshGrobTopOptCommands::add_matter(OGF::MeshGrob * m) {				
 		GEO::AttributesManager& am =  (m->facets).attributes();
 		GEO::Attribute<bool> matter(am, "m");
-		std::cout << "the size of th Attribute " << matter.size() << std::endl;
 		for(index_t i = 0; i < m->facets.nb(); i++) {
 			matter[i] = is_matter_face(m->facets, m->vertices, i); // I addedd !
-			std::cout << "is_matter " << i << ' ' << matter[i] << '\n';
 		}
 		m->update();
 	}	
@@ -106,7 +103,7 @@ namespace OGF {
 		GEO::AttributesManager& am =  (m->facets).attributes();
 		GEO::Attribute<bool> matter(am, "m");
 		index_t index = 0;
-		std::cout << "the number of facets is: " << m->facets.nb() << '\n';
+//		std::cout << "the number of facets is: " << m->facets.nb() << '\n';
 		for(index_t i = 0;  i < (m->facets).nb(); ++i) {
 			if(matter[i]) { 
 				face_index_to_index[i] = index;
@@ -265,7 +262,6 @@ namespace OGF {
 			if(nb_of_vertices > 10) continue;
 			for(index_t v = 0; v < nb_of_vertices; ++v) {
 				index_t tr_v = facets.vertex(f, v);
-				std::cout << "the map : " << vertex_index_to_index[tr_v] << '\n';
 				o << vertex_index_to_index[tr_v] << ' ';
 			}
 			o << '\n';
@@ -288,7 +284,7 @@ namespace OGF {
 		o << vertex_index_to_index.size() << '\n';		
 		o << '2' << '\n';
 		for(auto&& e: index_to_index_vertex) {
-			std::cout << "e fitst " << e.first << '\n';
+	//		std::cout << "e fitst " << e.first << '\n';
 			auto tr = e.second;
 			const double * coord = vertices.point_ptr(tr);
 			o << coord[0] << ' ' << coord[1] << '\n';
@@ -308,7 +304,7 @@ namespace OGF {
 		get_fixed_faces(m->facets, m->vertices);
 		get_border(m->facet_corners, m->facets);
 
-		std::ofstream out("my_mesh.mesh");	
+		std::ofstream out("/home/hussein/Desktop/mfem-3.3.2/examples/my_mesh.mesh");	
 		std::ostringstream o;
 		print_mesh(o, m->facets, m->vertices);		
 		out << o.str() << '\n';
@@ -451,7 +447,7 @@ namespace OGF {
 
 		// call mfem 
 		execute_cmd(command.c_str());
-	
+		std::cout << "excuting mfem is done" << std::endl;	
 		// create the vector
 		// store the derivative of the centroid.	
 		std::vector<double> dxx(points->vertices.nb());
@@ -460,7 +456,9 @@ namespace OGF {
 	
 		GEO::AttributesManager& am =  (m->facets).attributes();
 		GEO::Attribute<index_t> charts(am, "chart");
+	
 		auto dj_dq = recieve_dj_dq(dj_dq_path);
+	
 		std::vector<bool> visited(dj_dq.size(), false); // we sould devide the size by two
 		const auto del_B = get_del_B();
 		for(index_t i = 0; i < m->facets.nb(); ++i) {
@@ -490,22 +488,26 @@ namespace OGF {
 			} 
 		}
 
- 	 	
+ 		update_mesh(dxx, dxy, points);	
 	}	
 
-//	void MeshGrobTopOptCommands::update_mesh(const std::vector<double> &dxx, const std::vector<double> &dxy, OGF::MeshGrob * points) {
-		
-//	}
+	void MeshGrobTopOptCommands::update_mesh(const std::vector<double> &dxx, const std::vector<double> &dxy, OGF::MeshGrob * points) {
+		for(index_t i = 0; i < dxx.size(); ++i) {
+			double * coord = points->vertices.point_ptr(i);
+			coord[0] = (dxx[i] > 0.0 ? std::min(coord[0] + dxx[i], 2.0) : std::max(coord[0] + dxx[i], 0.0));
+			coord[1] = (dxy[i] > 0.0 ? std::min(coord[1] + dxy[i], 1.0) : std::max(coord[1] + dxy[i], 0.0));
+		}		
+	}
 
 //--------------------------------------------------------------------------------------
 // Communication section 
 
 	void MeshGrobTopOptCommands::execute_cmd(const char *cmd) {
 		pid_t childpid = fork();
-		if(childpid == 0) execlp("/home/hussein/Desktop/mfem-3.3.2/examples/ex2", "/home/hussein/Desktop/mfem-3.3.2/examples/ex2", cmd, NULL);
+		if(childpid == 0) execlp("/home/hussein/Desktop/mfem-3.3.2/examples/ex2", "/home/hussein/Desktop/mfem-3.3.2/examples/ex2", "-m" ,"/home/hussein/Desktop/mfem-3.3.2/examples/my_mesh.mesh", NULL);
 		else if(childpid > 0) wait(NULL);
 	}
-
+/*
 	void MeshGrobTopOptCommands::get_RVD(OGF::MeshGrob *m, OGF::MeshGrob * points) {
 
 		auto vv = recieve_dj_dq("/home/hussein/Desktop/mfem-3.3.2/examples/dq.txt");
@@ -531,7 +533,7 @@ namespace OGF {
 				std::cout << "the number of centroid : " << centroid.size() << '\n';			
 			} 
 		}
-	}
+	}*/
 }
 
 // replacing attribute by a function

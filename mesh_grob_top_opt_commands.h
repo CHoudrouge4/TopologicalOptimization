@@ -1,6 +1,5 @@
 
 /*
- *
  *  OGF/Graphite: Geometry and Graphics Programming Library + Utilities
  *  Copyright (C) 2000-2015 INRIA - Project ALICE
  *
@@ -53,7 +52,8 @@
 #include <armadillo>
 #include <unistd.h>
 #include <sys/wait.h> 
-//#include "/home/hussein/Programming/project/graphite3_1.6.5/GraphiteThree/geogram/src/lib/exploragram/optimal_transport/optimal_transport_2d.h"
+#include <algorithm>
+//#include "home/hussein/Programming/project/graphite3_1.6.5/GraphiteThree/geogram/src/lib/exploragram/optimal_transport/optimal_transport_2d.h"
 
 typedef std::pair<unsigned int, unsigned int> segment;
 typedef std::pair<double , double> point_2;
@@ -87,8 +87,8 @@ namespace OGF {
 		void add_matter(OGF::MeshGrob *m);
 		void extract_mesh(GEO::Mesh *m);
 		void send_mesh(OGF::MeshGrob *m);	
-		void get_RVD(OGF::MeshGrob *m, OGF::MeshGrob * points);
- 
+//		void get_RVD(OGF::MeshGrob *m, OGF::MeshGrob * points);
+		void compute_dj_dx(OGF::MeshGrob *m,  OGF::MeshGrob * points); 
 	private:
 		std::set<index_t> submesh;
 		std::map<index_t, index_t> face_index_to_index;	
@@ -97,7 +97,7 @@ namespace OGF {
 		std::set<index_t> fixed_faces;
 		std::set<segment> borders;
 		const std::string dj_dq_path = "/home/hussein/Desktop/mfem-3.3.2/examples/dq.txt";
-		const std::string command    = "-m /home/hussein/Programming/project/graphite3_1.6.5/bin/my_mesh.mesh"; 
+		const std::string command    = "/home/hussein/Programming/project/graphite3_1.6.5/bin/my_mesh.mesh"; 
 		const double epsilon = 0.0001;
 		const double delta = 0.1;
 	//	GEO::Attribute<bool> matter;
@@ -131,8 +131,10 @@ namespace OGF {
 
 		GEO::vector<double> recieve_dj_dq(const std::string file_name); 
 	    arma::mat derive_q_x_internal(const double qx, const double qy, const arma::mat &dB, const std::set<index_t> & centroid, const MeshVertices & points); 
- 		void compute_dj_dx(OGF::MeshGrob *m,  OGF::MeshGrob * points); 
+ 
 		void execute_cmd(const char *cmd);
+		void update_mesh(const std::vector<double> &dxx, const std::vector<double> &dxy, OGF::MeshGrob * points); 
+
     };
 }
 
