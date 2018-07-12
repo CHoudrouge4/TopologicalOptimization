@@ -22,7 +22,7 @@
  *  and the reason for such modification.
  *
  *  Contact for Graphite: Bruno Levy - Bruno.Levy@inria.fr
- *  Contact for this Plugin: Nicolas Bourbaki
+ *  Contact for this Plugin: Nicolas Bourbaki or Hussein Houdrouge - hah51@mail.aub.edu
  *
  *     Project ALICE
  *     LORIA, INRIA Lorraine, 
@@ -42,10 +42,9 @@
  * TODO: 
  *	- send exec signal to mfem i.e automate the execution of mfem. -- ep done 
  *	- Recieve the dj/dq -- done 
- *  - apply the derivatives -- cw  
- *  - update_the mesh -- ld 
- *
- *
+ *  - apply the derivatives -- done  
+ *  - update_the mesh -- done
+ *  - optimal transport part
  */
 
 
@@ -56,6 +55,7 @@
 #include <geogram/parameterization/mesh_segmentation.h>
 #include <geogram/basic/attributes.h>
 #include <geogram/basic/matrix.h>
+#include <exploragram/optimal_transport/optimal_transport_2d.h>
 
 namespace OGF {
 
@@ -87,15 +87,28 @@ namespace OGF {
 	}
 	
 	// set the void and the matter faces
-	void MeshGrobTopOptCommands::add_matter(OGF::MeshGrob * m) {				
+	void MeshGrobTopOptCommands::add_matter(OGF::MeshGrob * points) {				
+		GEO::AttributesManager& vam = points->vertices.attributes();
+		GEO::Attribute<bool> v_matter(vam, "m");	
+
+		for(index_t v = 0; v < points->vertices.nb(); ++v) {
+			const double * coord = points->vertices.point_ptr(v);
+			v_matter[v] = is_matter_vertex(coord);
+		}
+	}
+
+
+	void MeshGrobTopOptCommands::set_matter(OGF::MeshGrob *m, OGF::MeshGrob * points) {
 		GEO::AttributesManager& am =  (m->facets).attributes();
 		GEO::Attribute<bool> matter(am, "m");
-		for(index_t i = 0; i < m->facets.nb(); i++) {
-			matter[i] = is_matter_face(m->facets, m->vertices, i); // I addedd !
-		}
+		GEO::AttributesManager& vam = points->vertices.attributes();
+		GEO::Attribute<bool> v_matter(vam, "m");
+		GEO::AttributesManager& f_am =  (m->facets).attributes();
+		GEO::Attribute<index_t> charts(f_am, "chart");
+		for(index_t i = 0; i < m->facets.nb(); i++) matter[i] = v_matter[charts[i]]; 
 		m->update();
-	}	
-
+	}
+	
 //***************************************************************************************************************///
 	// store the matter faces is sunmesh fiels ; after adding the matter I extracted the mesh with matter 
 	void MeshGrobTopOptCommands::extract_mesh(GEO::Mesh *m) {
@@ -294,9 +307,9 @@ namespace OGF {
 	void MeshGrobTopOptCommands::send_mesh(OGF::MeshGrob *m) {
 		(m->facets).connect();
 		m->update();
-		m->save("original.mesh");
+//		m->save("original.mesh");
 //		add_matter(m);
-		//my_mesh->save("the_great_mesh.mesh");
+//		my_mesh->save("the_great_mesh.mesh");
 //		my_mesh->update();
 		extract_mesh(m);
 	
@@ -323,14 +336,16 @@ namespace OGF {
 			fs.push_back(current);
 			local = facets.find_vertex(current, v);
 			c = facets.corner(current, local);
-			current = facet_corners.adjacent_facet(c);	
-		
+			current = facet_corners.adjacent_facet(c);		
 		}
 		return fs;
 	}
 
 	std::set<index_t> MeshGrobTopOptCommands::get_centroid(const std::vector<Face> &incident_faces, const MeshFacets& facets) {
 		std::set<Vertex> centroid; 
+		if(incident_faces.size() == 0) {
+			std::cout << "the number of incident faces is equal to 0"  << std::endl;
+		}
 		if(incident_faces.size() < 3) return centroid;
 		GEO::AttributesManager& am = facets.attributes();
 		GEO::Attribute<index_t> charts(am, "chart");
@@ -338,32 +353,24 @@ namespace OGF {
 			Face f = incident_faces[i];
 			centroid.insert(charts[f]);
 		}
+		// check if all of them are matter; 
 		return centroid;
 	}
 
 	arma::mat MeshGrobTopOptCommands::get_A_inverse(const std::set<index_t> & centroid, const MeshVertices & points) {
-
-
+		
+		arma::mat A(2, 2);
+	
+		std::cout << "centroid number " << centroid.size() << std::endl;
+		if(centroid.size() == 0) return A;
+	
 		auto it = centroid.begin();
 		const double * x1 = points.point_ptr(*it);
 		std::advance(it, 1);
 		const double * x2 = points.point_ptr(*it);
 		std::advance(it, 1);
 		const double * x3 = points.point_ptr(*it);
-
-/*		double * data = new double[4];
 	
-		data[0] = x2[0] - x1[0];
-		data[1] = x2[1] - x1[1];
-		data[2] = x3[0] - x1[0];
-		data[3] = x3[1] - x1[1];
-	
-		GEO::Matrix<2, double> A(data);
-
-		delete data;
-		return A.inverse();*/
-
-		arma::mat A(2, 2);
 		A(0, 0) = x2[0] - x1[0];
 		A(0, 1) = x2[1] - x1[1];
 		A(1, 0) = x3[0] - x1[0];
@@ -441,12 +448,11 @@ namespace OGF {
 	}
 	
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	
-	void MeshGrobTopOptCommands::compute_dj_dx(OGF::MeshGrob *m,  OGF::MeshGrob * points) {
-
+	// separate this function into two but this ll add a storage cost 	
+	void MeshGrobTopOptCommands::compute_dj_dx(OGF::MeshGrob *m,  OGF::MeshGrob * points, OGF::Mesh * omega) {
 
 		// call mfem 
-		execute_cmd(command.c_str());
+		execute_cmd();
 		std::cout << "excuting mfem is done" << std::endl;	
 		// create the vector
 		// store the derivative of the centroid.	
@@ -456,11 +462,14 @@ namespace OGF {
 	
 		GEO::AttributesManager& am =  (m->facets).attributes();
 		GEO::Attribute<index_t> charts(am, "chart");
-	
+
+		std::cout << "recieving dj dq" << std::endl;	
 		auto dj_dq = recieve_dj_dq(dj_dq_path);
-	
+		std::cout << "done from recieving dj dq" << std::endl;	
+
 		std::vector<bool> visited(dj_dq.size(), false); // we sould devide the size by two
 		const auto del_B = get_del_B();
+		std::cout << "the number of facets are " << m->facets.nb() << '\n';
 		for(index_t i = 0; i < m->facets.nb(); ++i) {
 			index_t nb_of_vertices = (m->facets).nb_vertices(i);
 			for(Vertex v = 0; v < nb_of_vertices; ++v) {
@@ -487,8 +496,14 @@ namespace OGF {
  					}
 			} 
 		}
-
+		std::cout << "updating the mesh" << '\n';
  		update_mesh(dxx, dxy, points);	
+		std::cout << "done from updating the mesh" << '\n';
+		
+//		const double * pts  = points->vertices.point_ptr(0);
+//		std::vector<double> centroid(points->vertices.nb() * 3);
+//		std::vector<double> w(points->vertices.nb());
+//		compute_Laguerre_centroids_2d(omega, points->vertices.nb() , pts, centroid.data(), nullptr, false, 0, nullptr, 0, 0.0, nullptr, w.data(), 1000);
 	}	
 
 	void MeshGrobTopOptCommands::update_mesh(const std::vector<double> &dxx, const std::vector<double> &dxy, OGF::MeshGrob * points) {
@@ -502,7 +517,8 @@ namespace OGF {
 //--------------------------------------------------------------------------------------
 // Communication section 
 
-	void MeshGrobTopOptCommands::execute_cmd(const char *cmd) {
+	void MeshGrobTopOptCommands::execute_cmd() {
+//		system("/home/hussein/Desktop/mfem-3.3.2/examples/ex2  -m /home/hussein/Desktop/mfem-3.3.2/examples/my_mesh.mesh");
 		pid_t childpid = fork();
 		if(childpid == 0) execlp("/home/hussein/Desktop/mfem-3.3.2/examples/ex2", "/home/hussein/Desktop/mfem-3.3.2/examples/ex2", "-m" ,"/home/hussein/Desktop/mfem-3.3.2/examples/my_mesh.mesh", NULL);
 		else if(childpid > 0) wait(NULL);

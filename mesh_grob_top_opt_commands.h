@@ -22,7 +22,7 @@
  *  and the reason for such modification.
  *
  *  Contact for Graphite: Bruno Levy - Bruno.Levy@inria.fr
- *  Contact for this Plugin: Nicolas Bourbaki
+ *  Contact for this Plugin: Nicolas Bourbaki or Hussein Houdrouge - hah51@mail.aub.edu
  *
  *     Project ALICE
  *     LORIA, INRIA Lorraine, 
@@ -53,7 +53,8 @@
 #include <unistd.h>
 #include <sys/wait.h> 
 #include <algorithm>
-//#include "home/hussein/Programming/project/graphite3_1.6.5/GraphiteThree/geogram/src/lib/exploragram/optimal_transport/optimal_transport_2d.h"
+#include <stdlib.h>
+//#include <exploragram/optimal_transport/optimal_transport_2d.h>
 
 typedef std::pair<unsigned int, unsigned int> segment;
 typedef std::pair<double , double> point_2;
@@ -74,21 +75,22 @@ namespace OGF {
         //   Doxygen comments are parsed and used by Gomgen to
         //     generate tooltips.
         //   In addition to standard Doxygen tags, the following 
-	//     tags can be used:
-	//
-        //      \menu  indicate a menu relative to current menu
+		//     tags can be used:
+		//
+		//      \menu  indicate a menu relative to current menu
         //           (MeshGrobTopOptCommands), or an absolute menu (starting
         //           with a '/') to insert the command in existing
         //           menus (for instance /Surface/Remesh)
-	//          
+		//
         //      \advanced  all subsequent parameters are in the
         //        advanced section of the command (displayed when
         //        clicking on it)
-		void add_matter(OGF::MeshGrob *m);
+		void add_matter(OGF::MeshGrob * points);
 		void extract_mesh(GEO::Mesh *m);
 		void send_mesh(OGF::MeshGrob *m);	
 //		void get_RVD(OGF::MeshGrob *m, OGF::MeshGrob * points);
-		void compute_dj_dx(OGF::MeshGrob *m,  OGF::MeshGrob * points); 
+		void compute_dj_dx(OGF::MeshGrob *m,  OGF::MeshGrob * points, OGF::Mesh * omega); 
+		void set_matter(OGF::MeshGrob *m, OGF::MeshGrob * points); 
 	private:
 		std::set<index_t> submesh;
 		std::map<index_t, index_t> face_index_to_index;	
@@ -120,7 +122,6 @@ namespace OGF {
 		void get_fixed_faces(const MeshFacets & facets, const MeshVertices & vertices);
 		void get_border(const GEO::MeshFacetCornersStore& facets_corners, const MeshFacets & facets);	
 
-
 		// for computing the derivative of the boundary/centroid 
 		
 		std::vector<index_t> get_surrounded_facets(const MeshFacetCornersStore & facet_corners, const MeshFacets& facets, const Face f, const Vertex v);
@@ -132,7 +133,7 @@ namespace OGF {
 		GEO::vector<double> recieve_dj_dq(const std::string file_name); 
 	    arma::mat derive_q_x_internal(const double qx, const double qy, const arma::mat &dB, const std::set<index_t> & centroid, const MeshVertices & points); 
  
-		void execute_cmd(const char *cmd);
+		void execute_cmd();
 		void update_mesh(const std::vector<double> &dxx, const std::vector<double> &dxy, OGF::MeshGrob * points); 
 
     };
