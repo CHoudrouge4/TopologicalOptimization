@@ -44,7 +44,7 @@
  *	- Recieve the dj/dq -- done 
  *  - apply the derivatives -- done  
  *  - update_the mesh -- done
- *  - optimal transport part
+ *  - optimal transport part -- not yet
  */
 
 
@@ -59,12 +59,16 @@
 
 namespace OGF {
 
+
+	std::map<index_t, index_t> MeshGrobTopOptCommands::vertex_index_to_index;
+
     MeshGrobTopOptCommands::MeshGrobTopOptCommands() {}
     MeshGrobTopOptCommands::~MeshGrobTopOptCommands() {}
 	
 	// check if the vertex belong to the middle of the domain, if yes then it is a void;     
 	bool MeshGrobTopOptCommands::is_matter_vertex(const double * coord) {
-		return not ((coord[1] > 0.25 && coord[1] < 0.75) && ((coord[0] > 0.25 && coord[0] < 0.75) || (coord[0] > 1.25 && coord[0] < 1.75)));	
+//		return not ((coord[1] > 0.25 && coord[1] < 0.75) && ((coord[0] > 0.25 && coord[0] < 0.75) || (coord[0] > 1.25 && coord[0] < 1.75)));	
+		return not ((coord[1] > 0.25 && coord[1] < 0.75) && ((coord[0] > 0.25  && coord[0] < 1.75)));		
 	}
 
 	// if the face has more than some percentage a void vertex then it is a void face
@@ -89,8 +93,7 @@ namespace OGF {
 	// set the void and the matter faces
 	void MeshGrobTopOptCommands::add_matter(OGF::MeshGrob * points) {				
 		GEO::AttributesManager& vam = points->vertices.attributes();
-		GEO::Attribute<bool> v_matter(vam, "m");	
-
+		GEO::Attribute<bool> v_matter(vam, "m");
 		for(index_t v = 0; v < points->vertices.nb(); ++v) {
 			const double * coord = points->vertices.point_ptr(v);
 			v_matter[v] = is_matter_vertex(coord);
@@ -112,11 +115,9 @@ namespace OGF {
 //***************************************************************************************************************///
 	// store the matter faces is sunmesh fiels ; after adding the matter I extracted the mesh with matter 
 	void MeshGrobTopOptCommands::extract_mesh(GEO::Mesh *m) {
-//		submesh.clear();
 		GEO::AttributesManager& am =  (m->facets).attributes();
 		GEO::Attribute<bool> matter(am, "m");
 		index_t index = 0;
-//		std::cout << "the number of facets is: " << m->facets.nb() << '\n';
 		for(index_t i = 0;  i < (m->facets).nb(); ++i) {
 			if(matter[i]) { 
 				face_index_to_index[i] = index;
@@ -168,6 +169,7 @@ namespace OGF {
  	*
  	*/
 	void MeshGrobTopOptCommands::get_vertices_with_matter(const GEO::MeshFacets & facets) {
+		vertex_index_to_index.clear();
 		GEO::AttributesManager& am =  facets.attributes();
 		GEO::Attribute<bool> matter(am, "m");
 		index_t count = 0;
@@ -193,8 +195,6 @@ namespace OGF {
  	*/
 	void MeshGrobTopOptCommands::get_border(const GEO::MeshFacetCornersStore & facets_corners, const MeshFacets & facets) {
 		
-		//for(index_t i = 0; submesh.size(); ++i) {
-		//index_t f = submesh[i];
 		for(auto&& f: submesh) {
 			index_t nb_of_vertices = facets.nb_vertices(f);
 			if(nb_of_vertices > 10) continue;
@@ -297,7 +297,6 @@ namespace OGF {
 		o << vertex_index_to_index.size() << '\n';		
 		o << '2' << '\n';
 		for(auto&& e: index_to_index_vertex) {
-	//		std::cout << "e fitst " << e.first << '\n';
 			auto tr = e.second;
 			const double * coord = vertices.point_ptr(tr);
 			o << coord[0] << ' ' << coord[1] << '\n';
@@ -307,10 +306,6 @@ namespace OGF {
 	void MeshGrobTopOptCommands::send_mesh(OGF::MeshGrob *m) {
 		(m->facets).connect();
 		m->update();
-//		m->save("original.mesh");
-//		add_matter(m);
-//		my_mesh->save("the_great_mesh.mesh");
-//		my_mesh->update();
 		extract_mesh(m);
 	
 		get_vertices_with_matter(m->facets);
@@ -341,6 +336,7 @@ namespace OGF {
 		return fs;
 	}
 
+	// if we call this before triangulation it will be more efficient
 	std::set<index_t> MeshGrobTopOptCommands::get_centroid(const std::vector<Face> &incident_faces, const MeshFacets& facets) {
 		std::set<Vertex> centroid; 
 		if(incident_faces.size() == 0) {
@@ -360,10 +356,7 @@ namespace OGF {
 	arma::mat MeshGrobTopOptCommands::get_A_inverse(const std::set<index_t> & centroid, const MeshVertices & points) {
 		
 		arma::mat A(2, 2);
-	
-		std::cout << "centroid number " << centroid.size() << std::endl;
-		if(centroid.size() == 0) return A;
-	
+		
 		auto it = centroid.begin();
 		const double * x1 = points.point_ptr(*it);
 		std::advance(it, 1);
@@ -375,7 +368,7 @@ namespace OGF {
 		A(0, 1) = x2[1] - x1[1];
 		A(1, 0) = x3[0] - x1[0];
 		A(1, 1) = x3[1] - x1[1];
-
+		
 		return inv(A);
 	}
 
@@ -449,7 +442,7 @@ namespace OGF {
 	
 //-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// separate this function into two but this ll add a storage cost 	
-	void MeshGrobTopOptCommands::compute_dj_dx(OGF::MeshGrob *m,  OGF::MeshGrob * points, OGF::Mesh * omega) {
+	void MeshGrobTopOptCommands::compute_dj_dx(OGF::MeshGrob *m,  OGF::MeshGrob * points) {
 
 		// call mfem 
 		execute_cmd();
@@ -459,7 +452,6 @@ namespace OGF {
 		std::vector<double> dxx(points->vertices.nb());
 		std::vector<double> dxy(points->vertices.nb());
 
-	
 		GEO::AttributesManager& am =  (m->facets).attributes();
 		GEO::Attribute<index_t> charts(am, "chart");
 
@@ -467,89 +459,69 @@ namespace OGF {
 		auto dj_dq = recieve_dj_dq(dj_dq_path);
 		std::cout << "done from recieving dj dq" << std::endl;	
 
-		std::vector<bool> visited(dj_dq.size(), false); // we sould devide the size by two
 		const auto del_B = get_del_B();
-		std::cout << "the number of facets are " << m->facets.nb() << '\n';
+
+
+		std::vector<bool> visited(dj_dq.size(), false); // we sould devide the size by two
+
 		for(index_t i = 0; i < m->facets.nb(); ++i) {
-			index_t nb_of_vertices = (m->facets).nb_vertices(i);
+			index_t nb_of_vertices = (m->facets).nb_vertices(i);	
 			for(Vertex v = 0; v < nb_of_vertices; ++v) {
 				Vertex tr = m->facets.vertex(i, v);
+			
+				if(vertex_index_to_index.find(tr) == vertex_index_to_index.end()) continue;
 				auto fem_index = vertex_index_to_index[tr];
+				
 				if(visited[fem_index]) continue;
 				visited[fem_index] = true;
+
 				auto incident_faces = get_surrounded_facets(m->facet_corners, m->facets, i, tr);
 				auto centroid = get_centroid(incident_faces, m->facets);
+				if(centroid.size() != 3) continue;
+
 				const double * coord = m->vertices.point_ptr(tr);
-				// insert if statement //	
-					auto dqdx = derive_q_x_internal(coord[0], coord[1], del_B, centroid, points->vertices);
-					auto dqx = dj_dq[2 * fem_index];
-			   		auto dqy = dj_dq[2 * fem_index + 1];
 		
-					dqdx.row(0) *= dqx;
-					dqdx.row(1) *= dqy;
-	
-					unsigned int ii = 0;
-					for(auto&& e: centroid) {
-						dxx[e] = dqdx(0, ii) + dqdx(1, ii); 
-						dxy[e] = dqdx(0, ii + 1) + dqdx(1, ii + 1);
-						i += 2;
- 					}
+				auto dqdx = derive_q_x_internal(coord[0], coord[1], del_B, centroid, points->vertices);
+				auto dqx = dj_dq[2 * fem_index];
+		   		auto dqy = dj_dq[2 * fem_index + 1];
+		
+				dqdx.row(0) *=  dqx;
+				dqdx.row(1) *=  dqy;
+
+				unsigned int ii = 0;
+				for(auto&& e: centroid) {
+					dxx[e] = dqdx(0, ii) + dqdx(1, ii);
+					dxy[e] = dqdx(0, ii + 1) + dqdx(1, ii + 1);
+					ii += 2;
+ 				}
 			} 
 		}
+
 		std::cout << "updating the mesh" << '\n';
  		update_mesh(dxx, dxy, points);	
 		std::cout << "done from updating the mesh" << '\n';
-		
-//		const double * pts  = points->vertices.point_ptr(0);
-//		std::vector<double> centroid(points->vertices.nb() * 3);
-//		std::vector<double> w(points->vertices.nb());
-//		compute_Laguerre_centroids_2d(omega, points->vertices.nb() , pts, centroid.data(), nullptr, false, 0, nullptr, 0, 0.0, nullptr, w.data(), 1000);
 	}	
 
 	void MeshGrobTopOptCommands::update_mesh(const std::vector<double> &dxx, const std::vector<double> &dxy, OGF::MeshGrob * points) {
 		for(index_t i = 0; i < dxx.size(); ++i) {
+
 			double * coord = points->vertices.point_ptr(i);
-			coord[0] = (dxx[i] > 0.0 ? std::min(coord[0] + dxx[i], 2.0) : std::max(coord[0] + dxx[i], 0.0));
-			coord[1] = (dxy[i] > 0.0 ? std::min(coord[1] + dxy[i], 1.0) : std::max(coord[1] + dxy[i], 0.0));
+
+			if(coord[0] < 0.2) continue;
+			std::cout << coord[0] << ' '; 
+			coord[0] = (dxx[i] > 0.0 ? std::min(coord[0] + dxx[i], 1.9) : std::max(coord[0] + dxx[i], 0.0));
+			std::cout << coord[0] << '\n';
+			coord[1] = (dxy[i] > 0.0 ? std::min(coord[1] + dxy[i], 0.9) : std::max(coord[1] + dxy[i], 0.0));
 		}		
 	}
 
 //--------------------------------------------------------------------------------------
 // Communication section 
-
 	void MeshGrobTopOptCommands::execute_cmd() {
-//		system("/home/hussein/Desktop/mfem-3.3.2/examples/ex2  -m /home/hussein/Desktop/mfem-3.3.2/examples/my_mesh.mesh");
 		pid_t childpid = fork();
 		if(childpid == 0) execlp("/home/hussein/Desktop/mfem-3.3.2/examples/ex2", "/home/hussein/Desktop/mfem-3.3.2/examples/ex2", "-m" ,"/home/hussein/Desktop/mfem-3.3.2/examples/my_mesh.mesh", NULL);
 		else if(childpid > 0) wait(NULL);
 	}
-/*
-	void MeshGrobTopOptCommands::get_RVD(OGF::MeshGrob *m, OGF::MeshGrob * points) {
-
-		auto vv = recieve_dj_dq("/home/hussein/Desktop/mfem-3.3.2/examples/dq.txt");
-		for(auto e : vv) {
-			std::cout << "e in vv " << e << '\n';
-		} 
-		GEO::AttributesManager& am =  (m->facets).attributes();
-		GEO::Attribute<index_t> charts(am, "chart");
-		std::cout << "the charts size is: " << charts.size() << '\n';
-		std::cout << "the number of faces is: " << (m->facets).nb() << '\n';
-		for(index_t i = 0; i < m->facets.nb(); ++i) { 
-			std::cout << charts[i] << '\n';
-			const double * coord = (points->vertices).point_ptr(charts[i]);
-			std::cout << coord[0] << ' ' << coord[1] << '\n';
-			std::cout << (m->facets).nb_vertices(i) << '\n';
-			index_t nb_of_vertices = (m->facets).nb_vertices(i);
-			std::cout << nb_of_vertices << '\n';
-			for(Vertex v = 0; v < nb_of_vertices; ++v) {
-				Vertex tr = m->facets.vertex(i, v);
-				auto incident_faces = get_surrounded_facets(m->facet_corners, m->facets, i, tr);
-				std::cout << "the number of the incident faces: " << incident_faces.size() << '\n';
-				auto centroid = get_centroid(incident_faces, m->facets);
-				std::cout << "the number of centroid : " << centroid.size() << '\n';			
-			} 
-		}
-	}*/
 }
 
 // replacing attribute by a function

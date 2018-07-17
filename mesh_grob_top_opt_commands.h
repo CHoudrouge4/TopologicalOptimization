@@ -89,23 +89,20 @@ namespace OGF {
 		void extract_mesh(GEO::Mesh *m);
 		void send_mesh(OGF::MeshGrob *m);	
 //		void get_RVD(OGF::MeshGrob *m, OGF::MeshGrob * points);
-		void compute_dj_dx(OGF::MeshGrob *m,  OGF::MeshGrob * points, OGF::Mesh * omega); 
+		void compute_dj_dx(OGF::MeshGrob *m,  OGF::MeshGrob * points); 
 		void set_matter(OGF::MeshGrob *m, OGF::MeshGrob * points); 
 	private:
 		std::set<index_t> submesh;
 		std::map<index_t, index_t> face_index_to_index;	
-		std::map<index_t, index_t> vertex_index_to_index;
+		static std::map<index_t, index_t> vertex_index_to_index;
 		std::map<index_t, index_t> index_to_index_vertex;
 		std::set<index_t> fixed_faces;
 		std::set<segment> borders;
-		const std::string dj_dq_path = "/home/hussein/Desktop/mfem-3.3.2/examples/dq.txt";
+		const std::string dj_dq_path = "./dq.txt";
 		const std::string command    = "/home/hussein/Programming/project/graphite3_1.6.5/bin/my_mesh.mesh"; 
 		const double epsilon = 0.0001;
 		const double delta = 0.1;
-	//	GEO::Attribute<bool> matter;
-		// for rebuilding the mesh
 		std::map<point_2, std::set<index_t>> point_to_vertex;
-//		std::map<point_2, index_t> point_to_index;
 		GEO::Mesh * my_mesh;
 	
 		void print_mesh(std::ostringstream &o, const MeshFacets & facets, const MeshVertices & vertices); 
